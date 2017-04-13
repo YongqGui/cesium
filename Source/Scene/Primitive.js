@@ -41,6 +41,8 @@ define([
         './PrimitivePipeline',
         './PrimitiveState',
         './SceneMode',
+        './StencilFunction',
+        './StencilOperation',
         './ShadowMode'
     ], function(
         BoundingSphere,
@@ -84,6 +86,8 @@ define([
         PrimitivePipeline,
         PrimitiveState,
         SceneMode,
+        StencilFunction,
+        StencilOperation,
         ShadowMode) {
     'use strict';
 
@@ -1354,8 +1358,31 @@ define([
         var renderState = appearance.getRenderState();
         var rs;
 
-        if (twoPasses) {
+        if (defined(primitive._depthFailAppearance)) {
             rs = clone(renderState, false);
+            rs.stencilTest = {
+                enabled : true,
+                frontFunction : StencilFunction.ALWAYS,
+                backFunction : StencilFunction.ALWAYS,
+                reference : 0,
+                mask : ~0,
+                frontOperation : {
+                    fail : StencilOperation.KEEP,
+                    zFail : StencilOperation.KEEP,
+                    zPass : StencilOperation.INCREMENT_WRAP
+                },
+                backOperation : {
+                    fail : StencilOperation.KEEP,
+                    zFail : StencilOperation.KEEP,
+                    zPass : StencilOperation.INCREMENT_WRAP
+                }
+            };
+        }
+
+        if (twoPasses) {
+            if (!defined(rs)) {
+                rs = clone(renderState, false);
+            }
             rs.cull = {
                 enabled : true,
                 face : CullFace.BACK
@@ -1401,6 +1428,23 @@ define([
         if (defined(primitive._depthFailAppearance)) {
             renderState = primitive._depthFailAppearance.getRenderState();
             rs = clone(renderState, false);
+            rs.stencilTest = {
+                enabled : true,
+                frontFunction : StencilFunction.EQUAL,
+                backFunction : StencilFunction.EQUAL,
+                reference : 0,
+                mask : ~0,
+                frontOperation : {
+                    fail : StencilOperation.DECREMENT_WRAP,
+                    zFail : StencilOperation.KEEP,
+                    zPass : StencilOperation.KEEP
+                },
+                backOperation : {
+                    fail : StencilOperation.DECREMENT_WRAP,
+                    zFail : StencilOperation.KEEP,
+                    zPass : StencilOperation.KEEP
+                }
+            };
             rs.depthTest.func = DepthFunction.GREATER;
             if (twoPasses) {
                 rs.cull = {
@@ -1545,6 +1589,7 @@ define([
         for (var i = 0; i < length; ++i) {
             var colorCommand;
 
+            /*
             if (defined(primitive._depthFailAppearance)) {
                 if (twoPasses) {
                     colorCommand = colorCommands[i];
@@ -1578,6 +1623,7 @@ define([
 
                 ++i;
             }
+            */
 
             if (twoPasses) {
                 colorCommand = colorCommands[i];
@@ -1608,6 +1654,40 @@ define([
             colorCommand.shaderProgram = primitive._sp;
             colorCommand.uniformMap = uniforms;
             colorCommand.pass = pass;
+
+            if (defined(primitive._depthFailAppearance)) {
+                if (twoPasses) {
+                    ++i;
+
+                    colorCommand = colorCommands[i];
+                    if (!defined(colorCommand)) {
+                        colorCommand = colorCommands[i] = new DrawCommand({
+                            owner : primitive,
+                            primitiveType : primitive._primitiveType
+                        });
+                    }
+                    colorCommand.vertexArray = primitive._va[vaIndex];
+                    colorCommand.renderState = primitive._backFaceDepthFailRS;
+                    colorCommand.shaderProgram = primitive._spDepthFail;
+                    colorCommand.uniformMap = depthFailUniforms;
+                    colorCommand.pass = pass;
+                }
+
+                ++i;
+
+                colorCommand = colorCommands[i];
+                if (!defined(colorCommand)) {
+                    colorCommand = colorCommands[i] = new DrawCommand({
+                        owner : primitive,
+                        primitiveType : primitive._primitiveType
+                    });
+                }
+                colorCommand.vertexArray = primitive._va[vaIndex];
+                colorCommand.renderState = primitive._frontFaceDepthFailRS;
+                colorCommand.shaderProgram = primitive._spDepthFail;
+                colorCommand.uniformMap = depthFailUniforms;
+                colorCommand.pass = pass;
+            }
 
             var pickCommand = pickCommands[m];
             if (!defined(pickCommand)) {
